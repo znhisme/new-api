@@ -25,6 +25,7 @@ import {
   DEFAULT_CURRENCY_CONFIG,
 } from '@/stores/system-config-store'
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
+import { fetchDeploymentBranding } from '@/lib/deployment-branding'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 
 interface UseSystemConfigOptions {
@@ -155,8 +156,15 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
   const loadConfig = useCallback(async () => {
     try {
       setLoading(true)
-      const newConfig = await fetchSystemConfig()
-      setConfig(newConfig)
+      const [newConfig, deploymentBranding] = await Promise.all([
+        fetchSystemConfig(),
+        fetchDeploymentBranding(),
+      ])
+      setConfig({
+        ...newConfig,
+        systemName: deploymentBranding.systemName ?? newConfig.systemName,
+        logo: deploymentBranding.logo ?? newConfig.logo,
+      })
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to load system config:', error)

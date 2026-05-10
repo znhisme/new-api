@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { ArrowRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { DEFAULT_LOGO } from '@/lib/constants'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { Button } from '@/components/ui/button'
 import { HeroTerminalDemo } from '../hero-terminal-demo'
@@ -30,7 +31,7 @@ interface HeroProps {
 
 export function Hero(props: HeroProps) {
   const { t } = useTranslation()
-  const { systemName } = useSystemConfig()
+  const { systemName, logo } = useSystemConfig()
 
   return (
     <section className='relative z-10 flex flex-col items-center overflow-hidden px-6 pt-28 pb-16 md:pt-36 md:pb-24'>
@@ -53,9 +54,15 @@ export function Hero(props: HeroProps) {
       />
 
       <div className='flex max-w-3xl flex-col items-center text-center'>
+        <img
+          src={logo || DEFAULT_LOGO}
+          alt={systemName}
+          className='landing-animate-fade-up mb-6 h-24 w-24 rounded-3xl object-contain shadow-[0_0_40px_rgba(56,189,248,0.35)] ring-1 ring-cyan-300/20 md:h-28 md:w-28'
+          style={{ animationDelay: '0ms' }}
+        />
         <h1
           className='landing-animate-fade-up text-[clamp(2rem,5.5vw,3.5rem)] leading-[1.15] font-bold tracking-tight'
-          style={{ animationDelay: '0ms' }}
+          style={{ animationDelay: '80ms' }}
         >
           {t('Unified API Gateway for')}
           <br />
@@ -65,7 +72,7 @@ export function Hero(props: HeroProps) {
         </h1>
         <p
           className='landing-animate-fade-up text-muted-foreground/80 mt-5 max-w-lg text-base leading-relaxed opacity-0 md:text-lg'
-          style={{ animationDelay: '80ms' }}
+          style={{ animationDelay: '160ms' }}
         >
           {systemName}{' '}
           {t(
@@ -74,7 +81,7 @@ export function Hero(props: HeroProps) {
         </p>
         <div
           className='landing-animate-fade-up mt-8 flex items-center gap-3 opacity-0'
-          style={{ animationDelay: '160ms' }}
+          style={{ animationDelay: '240ms' }}
         >
           {props.isAuthenticated ? (
             <Button
