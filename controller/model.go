@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -18,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -132,7 +134,10 @@ func ListModels(c *gin.Context, modelType int) {
 		} else {
 			tokenModelLimit = map[string]bool{}
 		}
-		for allowModel, _ := range tokenModelLimit {
+		for allowModel := range tokenModelLimit {
+			if isCompactModelName(allowModel) {
+				continue
+			}
 			if !acceptUnsetRatioModel {
 				if !helper.HasModelBillingConfig(allowModel) {
 					continue
@@ -180,6 +185,9 @@ func ListModels(c *gin.Context, modelType int) {
 			models = model.GetGroupEnabledModels(group)
 		}
 		for _, modelName := range models {
+			if isCompactModelName(modelName) {
+				continue
+			}
 			if !acceptUnsetRatioModel {
 				if !helper.HasModelBillingConfig(modelName) {
 					continue
@@ -241,22 +249,50 @@ func ListModels(c *gin.Context, modelType int) {
 func ChannelListModels(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"success": true,
-		"data":    openAIModels,
+		"data":    filterCompactOpenAIModels(openAIModels),
 	})
 }
 
 func DashboardListModels(c *gin.Context) {
+	filtered := make(map[int][]string, len(channelId2Models))
+	for channelId, models := range channelId2Models {
+		filtered[channelId] = filterCompactModelNames(models)
+	}
 	c.JSON(200, gin.H{
 		"success": true,
-		"data":    channelId2Models,
+		"data":    filtered,
 	})
 }
 
 func EnabledListModels(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"success": true,
-		"data":    model.GetEnabledModels(),
+		"data":    filterCompactModelNames(model.GetEnabledModels()),
 	})
+}
+
+func isCompactModelName(modelName string) bool {
+	return strings.HasSuffix(modelName, ratio_setting.CompactModelSuffix)
+}
+
+func filterCompactModelNames(modelNames []string) []string {
+	filtered := make([]string, 0, len(modelNames))
+	for _, modelName := range modelNames {
+		if !isCompactModelName(modelName) {
+			filtered = append(filtered, modelName)
+		}
+	}
+	return filtered
+}
+
+func filterCompactOpenAIModels(models []dto.OpenAIModels) []dto.OpenAIModels {
+	filtered := make([]dto.OpenAIModels, 0, len(models))
+	for _, item := range models {
+		if !isCompactModelName(item.Id) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
 }
 
 func RetrieveModel(c *gin.Context, modelType int) {

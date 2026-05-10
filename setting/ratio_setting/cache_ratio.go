@@ -142,6 +142,11 @@ func UpdateCreateCacheRatioByJSONString(jsonStr string) error {
 func GetCacheRatio(name string) (float64, bool) {
 	ratio, ok := cacheRatioMap.Get(name)
 	if !ok {
+		if baseModelName, isCompact := CompactBaseModelName(name); isCompact {
+			if ratio, ok := cacheRatioMap.Get(baseModelName); ok {
+				return ratio, true
+			}
+		}
 		return 1, false // Default to 1 if not found
 	}
 	return ratio, true
@@ -150,6 +155,11 @@ func GetCacheRatio(name string) (float64, bool) {
 func GetCreateCacheRatio(name string) (float64, bool) {
 	ratio, ok := createCacheRatioMap.Get(name)
 	if !ok {
+		if baseModelName, isCompact := CompactBaseModelName(name); isCompact {
+			if ratio, ok := createCacheRatioMap.Get(baseModelName); ok {
+				return ratio, true
+			}
+		}
 		return 1.25, false // Default to 1.25 if not found
 	}
 	return ratio, true

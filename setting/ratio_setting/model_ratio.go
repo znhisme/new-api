@@ -371,7 +371,10 @@ func GetModelPrice(name string, printErr bool) (float64, bool) {
 		return price, true
 	}
 
-	if strings.HasSuffix(name, CompactModelSuffix) {
+	if baseModelName, isCompact := CompactBaseModelName(name); isCompact {
+		if price, ok := modelPriceMap.Get(baseModelName); ok {
+			return price, true
+		}
 		price, ok := modelPriceMap.Get(CompactWildcardModelKey)
 		if !ok {
 			if printErr {
@@ -405,9 +408,12 @@ func GetModelRatio(name string) (float64, bool, string) {
 
 	ratio, ok := modelRatioMap.Get(name)
 	if !ok {
-		if strings.HasSuffix(name, CompactModelSuffix) {
+		if baseModelName, isCompact := CompactBaseModelName(name); isCompact {
+			if baseRatio, ok := modelRatioMap.Get(baseModelName); ok {
+				return baseRatio, true, baseModelName
+			}
 			if wildcardRatio, ok := modelRatioMap.Get(CompactWildcardModelKey); ok {
-				return wildcardRatio, true, name
+				return wildcardRatio, true, CompactWildcardModelKey
 			}
 			//return 0, true, name
 		}
@@ -448,6 +454,11 @@ func GetCompletionRatio(name string) float64 {
 			return ratio
 		}
 	}
+	if baseModelName, isCompact := CompactBaseModelName(name); isCompact {
+		if ratio, ok := completionRatioMap.Get(baseModelName); ok {
+			return ratio
+		}
+	}
 	hardCodedRatio, contain := getHardcodedCompletionModelRatio(name)
 	if contain {
 		return hardCodedRatio
@@ -468,6 +479,15 @@ func GetCompletionRatioInfo(name string) CompletionRatioInfo {
 
 	if strings.Contains(name, "/") {
 		if ratio, ok := completionRatioMap.Get(name); ok {
+			return CompletionRatioInfo{
+				Ratio:  ratio,
+				Locked: false,
+			}
+		}
+	}
+
+	if baseModelName, isCompact := CompactBaseModelName(name); isCompact {
+		if ratio, ok := completionRatioMap.Get(baseModelName); ok {
 			return CompletionRatioInfo{
 				Ratio:  ratio,
 				Locked: false,
