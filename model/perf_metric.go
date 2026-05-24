@@ -37,13 +37,13 @@ func UpsertPerfMetric(metric *PerfMetric) error {
 			{Name: "bucket_ts"},
 		},
 		DoUpdates: clause.Assignments(map[string]interface{}{
-			"request_count":    gorm.Expr("perf_metrics.request_count + ?", metric.RequestCount),
-			"success_count":    gorm.Expr("perf_metrics.success_count + ?", metric.SuccessCount),
-			"total_latency_ms": gorm.Expr("perf_metrics.total_latency_ms + ?", metric.TotalLatencyMs),
-			"ttft_sum_ms":      gorm.Expr("perf_metrics.ttft_sum_ms + ?", metric.TtftSumMs),
-			"ttft_count":       gorm.Expr("perf_metrics.ttft_count + ?", metric.TtftCount),
-			"output_tokens":    gorm.Expr("perf_metrics.output_tokens + ?", metric.OutputTokens),
-			"generation_ms":    gorm.Expr("perf_metrics.generation_ms + ?", metric.GenerationMs),
+			"request_count":    gorm.Expr("perf_metrics.request_count + EXCLUDED.request_count"),
+			"success_count":    gorm.Expr("perf_metrics.success_count + EXCLUDED.success_count"),
+			"total_latency_ms": gorm.Expr("perf_metrics.total_latency_ms + EXCLUDED.total_latency_ms"),
+			"ttft_sum_ms":      gorm.Expr("perf_metrics.ttft_sum_ms + EXCLUDED.ttft_sum_ms"),
+			"ttft_count":       gorm.Expr("perf_metrics.ttft_count + EXCLUDED.ttft_count"),
+			"output_tokens":    gorm.Expr("perf_metrics.output_tokens + EXCLUDED.output_tokens"),
+			"generation_ms":    gorm.Expr("perf_metrics.generation_ms + EXCLUDED.generation_ms"),
 		}),
 	}).Create(metric).Error
 }
