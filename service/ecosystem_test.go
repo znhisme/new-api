@@ -1,12 +1,10 @@
 package service
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/glebarez/sqlite"
@@ -68,7 +66,7 @@ func TestResolveOrProvisionUserExistingAndDisabled(t *testing.T) {
 	require.ErrorIs(t, err, ErrEcosystemUserDisabled)
 }
 
-func TestUpsertEcosystemTokenIsIdempotent(t *testing.T) {
+func TestListEcosystemTokensReadsAllEnabledUserTokens(t *testing.T) {
 	setupEcosystemServiceTestDB(t)
 	restore := configureEcosystemServiceSettings(t)
 	defer restore()
@@ -82,47 +80,68 @@ func TestUpsertEcosystemTokenIsIdempotent(t *testing.T) {
 	}
 	require.NoError(t, model.DB.Create(user).Error)
 
-	req := EcosystemTokenUpsertRequest{
-		AppID:      "canvas",
-		Capability: "image",
-		Group:      "default",
-	}
-	token, key, created, err := UpsertEcosystemToken(user, req)
-	require.NoError(t, err)
-	require.True(t, created)
-	require.Equal(t, "ecosystem:canvas:image", token.Name)
-	require.Equal(t, "default", token.Group)
-	require.True(t, strings.HasPrefix(key, "sk-"))
-
-	secondToken, secondKey, secondCreated, err := UpsertEcosystemToken(user, req)
-	require.NoError(t, err)
-	require.False(t, secondCreated)
-	require.Equal(t, token.Id, secondToken.Id)
-	require.Equal(t, key, secondKey)
-}
-
-func TestUpsertEcosystemTokenValidatesAppCapabilityAndGroup(t *testing.T) {
-	setupEcosystemServiceTestDB(t)
-	restore := configureEcosystemServiceSettings(t)
-	defer restore()
-
-	user := &model.User{
-		Username: "validate-user",
-		AffCode:  "aff-validate",
+	otherUser := &model.User{
+		Username: "other-token-user",
+		AffCode:  "aff-other-token",
 		Role:     common.RoleCommonUser,
 		Status:   common.UserStatusEnabled,
 		Group:    "default",
 	}
-	require.NoError(t, model.DB.Create(user).Error)
+	require.NoError(t, model.DB.Create(otherUser).Error)
 
-	_, _, _, err := UpsertEcosystemToken(user, EcosystemTokenUpsertRequest{AppID: "unknown", Capability: "image", Group: "default"})
-	require.ErrorIs(t, err, ErrEcosystemAppNotAllowed)
+	require.NoError(t, model.DB.Create(&model.Token{
+		UserId:         user.Id,
+		Name:           "聊天网站令牌",
+		Key:            "manual-image-key",
+		Status:         common.TokenStatusEnabled,
+		CreatedTime:    common.GetTimestamp(),
+		AccessedTime:   common.GetTimestamp(),
+		ExpiredTime:    -1,
+		UnlimitedQuota: true,
+		Group:          "default",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Token{
+		UserId:         user.Id,
+		Name:           "custom-token",
+		Key:            "manual-default-key",
+		Status:         common.TokenStatusEnabled,
+		CreatedTime:    common.GetTimestamp(),
+		AccessedTime:   common.GetTimestamp(),
+		ExpiredTime:    -1,
+		UnlimitedQuota: true,
+		Group:          "default",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Token{
+		UserId:         user.Id,
+		Name:           "disabled-token",
+		Key:            "ordinary-key",
+		Status:         common.TokenStatusDisabled,
+		CreatedTime:    common.GetTimestamp(),
+		AccessedTime:   common.GetTimestamp(),
+		ExpiredTime:    -1,
+		UnlimitedQuota: true,
+		Group:          "default",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Token{
+		UserId:         otherUser.Id,
+		Name:           "other-user-token",
+		Key:            "other-key",
+		Status:         common.TokenStatusEnabled,
+		CreatedTime:    common.GetTimestamp(),
+		AccessedTime:   common.GetTimestamp(),
+		ExpiredTime:    -1,
+		UnlimitedQuota: true,
+		Group:          "default",
+	}).Error)
 
-	_, _, _, err = UpsertEcosystemToken(user, EcosystemTokenUpsertRequest{AppID: "canvas", Capability: "video", Group: "default"})
-	require.ErrorIs(t, err, ErrEcosystemCapabilityNotAllowed)
-
-	_, _, _, err = UpsertEcosystemToken(user, EcosystemTokenUpsertRequest{AppID: "canvas", Capability: "image", Group: "not-a-real-group"})
-	require.ErrorIs(t, err, ErrEcosystemGroupNotAllowed)
+	tokens, err := ListEcosystemTokens(user)
+	require.NoError(t, err)
+	require.Len(t, tokens, 2)
+	require.Equal(t, "聊天网站令牌", tokens[0].TokenName)
+	require.Equal(t, "sk-manual-image-key", tokens[0].APIKey)
+	require.Equal(t, "https://newapi.example/v1", tokens[0].BaseURL)
+	require.Equal(t, "custom-token", tokens[1].TokenName)
+	require.Equal(t, "sk-manual-default-key", tokens[1].APIKey)
 }
 
 func setupEcosystemServiceTestDB(t *testing.T) {
@@ -145,23 +164,16 @@ func configureEcosystemServiceSettings(t *testing.T) func() {
 	settings := system_setting.GetLogtoEcosystemSettings()
 	originalSettings := *settings
 	originalRegisterEnabled := common.RegisterEnabled
-	originalMaxUserTokens := operation_setting.GetTokenSetting().MaxUserTokens
 	*settings = system_setting.LogtoEcosystemSettings{
-		Enabled:                    true,
-		Issuer:                     "http://logto.example/oidc",
-		Audience:                   "https://newapi.example",
-		JWKSURI:                    "http://logto.example/oidc/jwks",
-		AllowedApps:                []string{"canvas"},
-		AllowedCapabilities:        []string{"default", "image"},
-		DefaultTokenExpiredTime:    -1,
-		DefaultTokenUnlimitedQuota: true,
-		BaseURL:                    "https://newapi.example",
+		Enabled:  true,
+		Issuer:   "http://logto.example/oidc",
+		Audience: "https://newapi.example",
+		JWKSURI:  "http://logto.example/oidc/jwks",
+		BaseURL:  "https://newapi.example",
 	}
 	common.RegisterEnabled = true
-	operation_setting.GetTokenSetting().MaxUserTokens = 1000
 	return func() {
 		*settings = originalSettings
 		common.RegisterEnabled = originalRegisterEnabled
-		operation_setting.GetTokenSetting().MaxUserTokens = originalMaxUserTokens
 	}
 }

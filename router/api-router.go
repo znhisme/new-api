@@ -60,7 +60,7 @@ func SetApiRouter(router *gin.Engine) {
 			ecosystemRoute.GET("/me", middleware.LogtoAuth("ecosystem:me"), controller.EcosystemMe)
 			ecosystemRoute.GET("/groups", middleware.LogtoAuth("ecosystem:groups:read"), controller.EcosystemGroups)
 			ecosystemRoute.GET("/models", middleware.LogtoAuth("ecosystem:models:read"), controller.EcosystemModels)
-			ecosystemRoute.POST("/token/upsert", middleware.CriticalRateLimit(), middleware.LogtoAuth("ecosystem:tokens:issue"), controller.EcosystemTokenUpsert)
+			ecosystemRoute.GET("/tokens", middleware.LogtoAuth("ecosystem:tokens:read"), controller.EcosystemTokens)
 		}
 
 		apiRouter.POST("/stripe/webhook", controller.StripeWebhook)

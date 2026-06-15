@@ -10,16 +10,12 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"gorm.io/gorm"
 )
 
-var ErrEcosystemAppNotAllowed = errors.New("app_not_allowed")
-var ErrEcosystemCapabilityNotAllowed = errors.New("capability_not_allowed")
-var ErrEcosystemGroupNotAllowed = errors.New("group_not_allowed")
 var ErrEcosystemUserDisabled = errors.New("user_disabled")
 var ErrEcosystemInvalidToken = errors.New("invalid_ecosystem_token")
 
@@ -32,20 +28,12 @@ type EcosystemUserInfo struct {
 	Provisioned  bool   `json:"provisioned"`
 }
 
-type EcosystemTokenUpsertRequest struct {
-	AppID      string `json:"app_id"`
-	Capability string `json:"capability"`
-	Group      string `json:"group"`
-}
-
-type EcosystemTokenUpsertResponse struct {
-	TokenID    int    `json:"token_id"`
-	TokenName  string `json:"token_name"`
-	APIKey     string `json:"api_key,omitempty"`
-	BaseURL    string `json:"base_url"`
-	Group      string `json:"group"`
-	Capability string `json:"capability"`
-	Created    bool   `json:"created"`
+type EcosystemTokenInfo struct {
+	TokenID   int    `json:"token_id"`
+	TokenName string `json:"token_name"`
+	APIKey    string `json:"api_key,omitempty"`
+	BaseURL   string `json:"base_url"`
+	Group     string `json:"group"`
 }
 
 func ResolveOrProvisionUser(logtoSub string, email string, profileName string, profileUsername string) (*model.User, bool, error) {
@@ -136,110 +124,33 @@ func GetEcosystemUserModels(user *model.User) []string {
 	return models
 }
 
-func UpsertEcosystemToken(user *model.User, req EcosystemTokenUpsertRequest) (*model.Token, string, bool, error) {
+func ListEcosystemTokens(user *model.User) ([]EcosystemTokenInfo, error) {
 	if user == nil {
-		return nil, "", false, errors.New("user 为空！")
+		return nil, errors.New("user 为空！")
 	}
 	if user.Status != common.UserStatusEnabled {
-		return nil, "", false, ErrEcosystemUserDisabled
-	}
-	req.AppID = strings.TrimSpace(req.AppID)
-	req.Capability = strings.TrimSpace(req.Capability)
-	if req.Capability == "" {
-		req.Capability = "default"
-	}
-	req.Group = strings.TrimSpace(req.Group)
-
-	if err := validateEcosystemAppAndCapability(req.AppID, req.Capability); err != nil {
-		return nil, "", false, err
+		return nil, ErrEcosystemUserDisabled
 	}
 
-	resolvedGroup := req.Group
-	if resolvedGroup == "" {
-		resolvedGroup = user.Group
-	}
-	if !GroupInUserUsableGroups(user.Group, resolvedGroup) {
-		return nil, "", false, ErrEcosystemGroupNotAllowed
-	}
-
-	name := ecosystemTokenName(req.AppID, req.Capability)
-	existing, err := findExistingEcosystemToken(user.Id, name)
-	if err != nil {
-		return nil, "", false, err
-	}
-
-	if existing != nil {
-		if existing.Status != common.TokenStatusEnabled {
-			return nil, "", false, ErrEcosystemInvalidToken
-		}
-		existing.Group = resolvedGroup
-		existing.ExpiredTime = system_setting.GetLogtoEcosystemSettings().DefaultTokenExpiredTime
-		existing.UnlimitedQuota = system_setting.GetLogtoEcosystemSettings().DefaultTokenUnlimitedQuota
-		if err := existing.Update(); err != nil {
-			return nil, "", false, err
-		}
-		apiKey := formatEcosystemAPIKey(existing.GetFullKey())
-		return existing, apiKey, false, nil
-	}
-
-	count, err := model.CountUserTokens(user.Id)
-	if err != nil {
-		return nil, "", false, err
-	}
-	maxTokens := operation_setting.GetMaxUserTokens()
-	if maxTokens > 0 && int(count) >= maxTokens {
-		return nil, "", false, errors.New("已达到最大令牌数量限制")
-	}
-
-	key, err := common.GenerateKey()
-	if err != nil {
-		return nil, "", false, err
-	}
-	token := &model.Token{
-		UserId:             user.Id,
-		Name:               name,
-		Key:                key,
-		Status:             common.TokenStatusEnabled,
-		CreatedTime:        common.GetTimestamp(),
-		AccessedTime:       common.GetTimestamp(),
-		ExpiredTime:        system_setting.GetLogtoEcosystemSettings().DefaultTokenExpiredTime,
-		RemainQuota:        0,
-		UnlimitedQuota:     system_setting.GetLogtoEcosystemSettings().DefaultTokenUnlimitedQuota,
-		ModelLimitsEnabled: false,
-		Group:              resolvedGroup,
-	}
-	if err := token.Insert(); err != nil {
-		return nil, "", false, err
-	}
-	apiKey := formatEcosystemAPIKey(token.GetFullKey())
-	return token, apiKey, true, nil
-}
-
-func validateEcosystemAppAndCapability(appID string, capability string) error {
-	settings := system_setting.GetLogtoEcosystemSettings()
-	if !stringInSlice(strings.TrimSpace(appID), settings.AllowedApps) {
-		return ErrEcosystemAppNotAllowed
-	}
-	if !stringInSlice(strings.TrimSpace(capability), settings.AllowedCapabilities) {
-		return ErrEcosystemCapabilityNotAllowed
-	}
-	return nil
-}
-
-func findExistingEcosystemToken(userID int, name string) (*model.Token, error) {
-	var token model.Token
-	err := model.DB.Where("user_id = ? AND name = ?", userID, name).First(&token).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
+	var tokens []model.Token
+	if err := model.DB.Where("user_id = ? AND status = ?", user.Id, common.TokenStatusEnabled).
+		Order("id asc").
+		Find(&tokens).Error; err != nil {
 		return nil, err
 	}
-	return &token, nil
-}
 
-func ecosystemTokenName(appID string, capability string) string {
-	return fmt.Sprintf("ecosystem:%s:%s", strings.TrimSpace(appID), strings.TrimSpace(capability))
+	baseURL := GetLogtoEcosystemBaseURL()
+	result := make([]EcosystemTokenInfo, 0, len(tokens))
+	for _, token := range tokens {
+		result = append(result, EcosystemTokenInfo{
+			TokenID:   token.Id,
+			TokenName: token.Name,
+			APIKey:    formatEcosystemAPIKey(token.GetFullKey()),
+			BaseURL:   baseURL,
+			Group:     token.Group,
+		})
+	}
+	return result, nil
 }
 
 func buildEcosystemUsername(logtoSub string) string {
@@ -263,16 +174,6 @@ func truncateEcosystemUsername(username string) string {
 		return username
 	}
 	return username[:model.UserNameMaxLength]
-}
-
-func stringInSlice(value string, list []string) bool {
-	value = strings.TrimSpace(value)
-	for _, item := range list {
-		if strings.TrimSpace(item) == value {
-			return true
-		}
-	}
-	return false
 }
 
 func GetLogtoEcosystemBaseURL() string {

@@ -41,10 +41,11 @@ var (
 
 type LogtoAccessTokenClaims struct {
 	jwt.RegisteredClaims
-	Scope    string `json:"scope"`
-	Email    string `json:"email"`
-	ClientID string `json:"client_id"`
-	AZP      string `json:"azp"`
+	Scope         string `json:"scope"`
+	Email         string `json:"email"`
+	ClientID      string `json:"client_id"`
+	LogtoClientID string `json:"clientId"`
+	AZP           string `json:"azp"`
 }
 
 type LogtoTokenInfo struct {
@@ -155,6 +156,9 @@ func ValidateLogtoAccessToken(authHeader string, requiredScopes ...string) (*Log
 	}
 
 	clientID := strings.TrimSpace(claims.ClientID)
+	if clientID == "" {
+		clientID = strings.TrimSpace(claims.LogtoClientID)
+	}
 	if clientID == "" {
 		clientID = strings.TrimSpace(claims.AZP)
 	}

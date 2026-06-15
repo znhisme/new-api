@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"strings"
-
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -11,8 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type EcosystemTokenUpsertRequest = service.EcosystemTokenUpsertRequest
-type EcosystemTokenUpsertResponse = service.EcosystemTokenUpsertResponse
+type EcosystemTokenInfo = service.EcosystemTokenInfo
 type EcosystemUserInfo = service.EcosystemUserInfo
 
 func ecosystemUserFromContext(c *gin.Context) (*model.User, bool, error) {
@@ -78,36 +75,16 @@ func EcosystemModels(c *gin.Context) {
 	common.ApiSuccess(c, service.GetEcosystemUserModels(user))
 }
 
-func EcosystemTokenUpsert(c *gin.Context) {
+func EcosystemTokens(c *gin.Context) {
 	user, _, err := ecosystemUserFromContext(c)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	var req EcosystemTokenUpsertRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	req.AppID = strings.TrimSpace(req.AppID)
-	req.Capability = strings.TrimSpace(req.Capability)
-	req.Group = strings.TrimSpace(req.Group)
-	if req.Capability == "" {
-		req.Capability = "default"
-	}
-	token, apiKey, created, err := service.UpsertEcosystemToken(user, req)
+	tokens, err := service.ListEcosystemTokens(user)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	baseURL := service.GetLogtoEcosystemBaseURL()
-	common.ApiSuccess(c, EcosystemTokenUpsertResponse{
-		TokenID:    token.Id,
-		TokenName:  token.Name,
-		APIKey:     apiKey,
-		BaseURL:    baseURL,
-		Group:      token.Group,
-		Capability: req.Capability,
-		Created:    created,
-	})
+	common.ApiSuccess(c, tokens)
 }

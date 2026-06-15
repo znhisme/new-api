@@ -41,12 +41,17 @@ func TestValidateLogtoAccessToken(t *testing.T) {
 	restore := configureLogtoEcosystemSettingsForTest(t, issuer, audience, jwksServer.URL)
 	defer restore()
 
-	validToken := signLogtoTestToken(t, privateKey, kid, issuer, audience, time.Now().Add(time.Hour), "ecosystem:me ecosystem:tokens:issue")
+	validToken := signLogtoTestToken(t, privateKey, kid, issuer, audience, time.Now().Add(time.Hour), "ecosystem:me ecosystem:tokens:read")
 	info, err := ValidateLogtoAccessToken("Bearer "+validToken, "ecosystem:me")
 	require.NoError(t, err)
 	require.Equal(t, "logto-user-1", info.Subject)
 	require.Equal(t, "user@example.com", info.Email)
 	require.Equal(t, "canvas-client", info.ClientID)
+
+	camelClientIDToken := signLogtoTestTokenWithClientClaims(t, privateKey, kid, issuer, audience, time.Now().Add(time.Hour), "ecosystem:me", "", "logto-camel-client", "")
+	info, err = ValidateLogtoAccessToken("Bearer "+camelClientIDToken, "ecosystem:me")
+	require.NoError(t, err)
+	require.Equal(t, "logto-camel-client", info.ClientID)
 
 	_, err = ValidateLogtoAccessToken("Bearer "+validToken, "ecosystem:models:read")
 	require.ErrorIs(t, err, ErrLogtoInsufficientScope)
@@ -73,16 +78,12 @@ func configureLogtoEcosystemSettingsForTest(t *testing.T, issuer string, audienc
 	original := *settings
 	resetLogtoJWKSCacheForTest()
 	*settings = system_setting.LogtoEcosystemSettings{
-		Enabled:                    true,
-		Issuer:                     issuer,
-		Audience:                   audience,
-		JWKSURI:                    jwksURI,
-		RequiredScopes:             []string{},
-		AllowedApps:                []string{"canvas"},
-		AllowedCapabilities:        []string{"default", "image"},
-		DefaultTokenExpiredTime:    -1,
-		DefaultTokenUnlimitedQuota: true,
-		BaseURL:                    "https://newapi.example",
+		Enabled:        true,
+		Issuer:         issuer,
+		Audience:       audience,
+		JWKSURI:        jwksURI,
+		RequiredScopes: []string{},
+		BaseURL:        "https://newapi.example",
 	}
 	return func() {
 		*settings = original
@@ -103,6 +104,11 @@ func TestLogtoAuthMiddlewareRejectsMissingBearer(t *testing.T) {
 
 func signLogtoTestToken(t *testing.T, privateKey *rsa.PrivateKey, kid string, issuer string, audience string, expiresAt time.Time, scope string) string {
 	t.Helper()
+	return signLogtoTestTokenWithClientClaims(t, privateKey, kid, issuer, audience, expiresAt, scope, "canvas-client", "", "")
+}
+
+func signLogtoTestTokenWithClientClaims(t *testing.T, privateKey *rsa.PrivateKey, kid string, issuer string, audience string, expiresAt time.Time, scope string, clientID string, logtoClientID string, azp string) string {
+	t.Helper()
 	claims := LogtoAccessTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
@@ -112,9 +118,11 @@ func signLogtoTestToken(t *testing.T, privateKey *rsa.PrivateKey, kid string, is
 			NotBefore: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Minute)),
 		},
-		Scope:    scope,
-		Email:    "user@example.com",
-		ClientID: "canvas-client",
+		Scope:         scope,
+		Email:         "user@example.com",
+		ClientID:      clientID,
+		LogtoClientID: logtoClientID,
+		AZP:           azp,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = kid
